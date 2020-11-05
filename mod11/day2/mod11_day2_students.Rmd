@@ -1,0 +1,432 @@
+---
+title: "Mod 11: Maps and Spatial Data Day 2"
+author: "Dr. Cassy Dorff"
+output:
+  html_document:
+    keep_md: true
+urlcolor: blue  
+subtitle: DSI-Explore
+editor_options: 
+  chunk_output_type: console
+---
+
+Note: The chunk of code below is set up code. There is a function here that is written to quitely install packages. I'm not spending time on this, you should understand the basics of a function's grammar by this point in class. Come see us in office hours if you want to chat more. 
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning=FALSE)
+
+shhLoad=function(x){
+  if( !x %in% installed.packages()[,1] ){
+    install.packages(x, repos='https://cloud.r-project.org') }
+  suppressMessages(
+    suppressWarnings(
+      library(x, character.only = TRUE))) }
+
+pkgs=c(
+  'dplyr', 'ggplot2', 'tidyr', 
+  'tidyverse', 'cshapes', 'ggmap',
+  'rgeos', 'maptools',
+  'broom', 'countrycode'
+  )
+
+for(pkg in pkgs){  shhLoad(pkg) }
+```
+
+## Introduction to spatial data and maps! 
+
+### Getting Started: Case of Nigeria
+
+Let's build something inspired by this map!
+
+![Buildling a map inspired by this one](nigeriaConflictMap.png){#fig:nigeria}
+
+We are using information from two datasets in the plot above. First is battle events data from ACLED, which is stored in the `nData` object that we bring into our workspace from the `acled_nigeria.rda` file
+
+```{r}
+# following load call loads an object into the workspace
+# named nData
+load('acled_nigeria.rda')
+head(nData)
+nData[1:2,]
+```
+
+## nData
+
+What is in this data?
+
+- YEAR: time period of conflict (2001-2016)
+- a1: sender/initiator of conflict
+- a2: receiver/target of conflict
+- LATITUDE/LONGITUDE: geographic location of conflict
+- read all about the data here: https://acleddata.com/
+
+## top 10 initiators
+
+We can easily look at the armed actors that initiated conflict the most.
+
+```{r}
+sort(table(nData$a1), decreasing=TRUE)[1:10]
+```
+
+## top 10 receivers
+
+As well as those who were on the receiving end the most.
+
+```{r}
+sort(table(nData$a2), decreasing=TRUE)[1:10]
+```
+
+## Where does conflict occur?
+
+First we will use cshapes and base R. 
+
+What is a shape file?
+
+- The *shapefile* format is a geospatial vector data format for geographic information system (GIS) software
+- The shapefile format stores the data as primitive geometric shapes like points, lines, and polygons. 
+- These shapes, together with data attributes that are linked to each shape, create the representation of the geographic data. 
+- The term "shapefile" is quite common, but the format consists of a collection of files with a common filename prefix, stored in the same directory. The three mandatory files have filename extensions .shp, .shx, and .dbf.
+
+Recall this example from last time:
+```{r}
+# example from cshp package
+worldMap = cshp(
+  date=as.Date('2016-1-1')
+  )
+
+head(worldMap@data)
+
+# what is nigeria called in the sp df
+sort(unique(worldMap@data$CNTRY_NAME))
+
+# filter this dataset by cntry name = nigeria
+cntryShape = worldMap[worldMap$CNTRY_NAME == 'Nigeria', ]
+
+# now we can go ahead and plot it just with base R
+plot(cntryShape)
+```
+
+You could build on the base R approach above. In general, this can be a nice to check out shape files when you are exploring them. Now that we have done that, let's move to ggplot. Let's read from `?ggmap.`
+
+## GGMAP
+
+`ggmap` package is super useful. It enables you to directly gather information from Google's collection of mapping APIs. In class last time, we talked about how you could use the function within the `ggmap` package to grab maps of cities like Nashville and stadiums like the Big House.
+
+A couple of points here: geom_map understands the following aesthetics (required aesthetics are in bold):
+
+- *map_id*
+- alpha
+- colour
+- fill
+- linetype
+- size
+
+I definitely encourage you to explore this more on your own, but for now lets use this package to load in some maps of Nigeria. 
+
+Last time we had used some relatively simple code: 
+
+```{r}
+library(ggmap)
+register_google('AIzaSyBOvctSR0fZYBRwpZEN42S1Xdf3qbfz6vw')
+
+ngaLines = get_map(
+  location = 'Nigeria', 
+  zoom=6, 
+  maptype='toner-lines'
+)
+```
+
+You should *always* read more about each function on your own. But lets pause for a moment to talk about what `get_map()` arguments we use here. 
+
+- `location` = an address, longitude/latitude pair (in that order), or left/bottom/right/top bounding box
+  - A bounding box (usually shortened to bbox) is an area defined by two longitudes and two latitudes, where:
+  - Latitude is a decimal number between -90.0 and 90.0.
+  - Longitude is a decimal number between -180.0 and 180.0.
+- `map zoom` an integer from 3 (continent) to 21 (building), default value 10 (city).
+- `maptype` = a character string providing map theme. options available are "terrain", "terrain-background", "satellite", "roadmap", and "hybrid" (google maps), "terrain", "watercolor", and "toner" (stamen maps)
+
+A side note, on long vs. lat. If this coordinate system is new to you. Spend some time reading about it on your own. 
+![Long & Lat](longlat.png){#fig:longlat}
+
+
+The easiest way to explore map types is to play with them. They are many different designs with different components to explore.
+
+Before we move onto plotting the result of the `get_map`function, lets also understand the object that this function outputs:
+
+```{r}
+class(ngaLines)
+
+dim(ngaLines)
+
+ngaLines[1:6, 1:6]
+```
+
+This is known as a *raster* object. Raster objects are just matrices, each cell in the matrix represents information on what to draw at a different portion of a plot. In the matrix that we outputted above the sequence of zeros is saying to not fill in any portion of the identified plot with colors or lines. 
+
+If we explore the raster object a bit further we can see some actual plotting instructions: 
+
+```{r}
+ngaLines[100:106, 20:26]
+```
+
+What to understand more deeply where this information comes from? Some people design raster objects. That is beyond the scope of today's lesson. I personally, do not do this and take raster objects as they are, visually speaking. You can read more, however, about manipulating them in R, here:
+
+- http://finzi.psych.upenn.edu/library/raster/html/raster-package.html
+   
+Now to plot this output we can use the `ggmap` function (also from the `ggmap` package) as we saw last class:
+
+```{r}
+ggmap(ngaLines)
+```
+
+However, it's worth spending time thinking about alternative options for these parameters. 
+
+- As mentioned above, the first argument is just the location and here there is not much leeway for this current application since we want a map specifically of Nigeria. 
+
+- Additionally, the zoom parameter toggles how much we zoom into the centroid of the location that we pick (ranges between 0 to 18). Meaning that if we set zoom to some extremely high number like 17 we would be asking the google maps API to be returning us a picture of the "middle" of Nigeria and we would lose perspective on the borders of Nigeria, e.g., which is pointless for us:
+
+```{r}
+ngaLines_highZoom = get_map(
+  location='Nigeria',
+  zoom=17,
+  maptype='toner-lines'
+)
+
+ggmap(ngaLines_highZoom)
+
+# try something lower
+ngaLines_betterZoom = get_map(
+  location='Nigeria',
+  zoom=9,
+  maptype='toner-lines'
+)
+
+ggmap(ngaLines_betterZoom)
+```
+
+Alternatively, if we set zoom equal to zero, then we would just get a map of Africa (lets toy with maptype here too):
+
+```{r}
+ngaLines_lowZoom = get_map(
+  location='Nigeria', 
+  zoom=3, 
+  maptype='toner-lines'
+)
+
+ggmap(ngaLines_lowZoom)
+```
+
+As we just saw, the last and most important parameter is `maptype`. So far we have mostly chosen toner lines, but there are a bevy of other options. Why do toner lines not print the boundaries? Toner line style maps emphasize simplicity and usually do not have full boundaries for edge countries. We can use 'toner-lite' instead.
+
+```{r}
+ngaLines_lite = get_map(
+  location='Nigeria', 
+  zoom=3, 
+  maptype='toner-lite'
+)
+
+ggmap(ngaLines_lite)
+```
+
+Lets also experiment with map types, try roadmap:  
+
+```{r}
+ngaLines_roadmap = get_map(
+  location='Nigeria', 
+  zoom=6, 
+  maptype='roadmap'
+)
+
+ggmap(ngaLines_roadmap)
+
+ngaLines = ngaLines_roadmap
+```
+
+Last, you can also specify regions via the bounding box. All of these show some of the built-in information inside raster tile. You do not need any data files containing information on things like scale, projection, boundaries, etc. because that information is already created by the map tile.
+
+```{r}
+# store bounding box coordinates & get maps
+chi_bb <- c(left = -87.936287,
+            bottom = 41.679835,
+            right = -87.447052,
+            top = 42.000835)
+
+chicago_stamen <- get_stamenmap(bbox = chi_bb,
+                                zoom = 11)
+ggmap(chicago_stamen)
+```
+
+As mentioned, there are a number of other options as well, we won't go through each of them but here's a gallery that shows what other options look like: https://www.r-graph-gallery.com/324-map-background-with-the-ggmap-library.html
+
+## Combining data
+
+Let's combine the information from `ggmap` with our conflictual event data about Nigeria.  As you can see, below we use ggmap() to first call the map we want. Then we can easily layer on points from `nData` using longitude and latitude. 
+
+
+```{r}
+ggmap(ngaLines) +
+  geom_point(
+    data=nData, 
+    aes(x=LONGITUDE, y=LATITUDE), 
+    alpha=.4
+  )
+```
+
+That concludes our 'getting familiar' with rasters section. 
+
+## Spatial Polygon Dataframes
+
+An alternative approach of projecting our conflictual event data onto a map is by using a *spatial polygon* dataframe. These are distinct from rasters in that they give R instructions on *drawing* polygons. They do this by specifying the borders of the polygon via a set of coordinates and then a line connects each one of the identified border points in order to make a polygon.
+
+One way to acquire spatial polygon dataframes in R is via the `cshapes` package, recall: 
+
+```{r}
+library(cshapes)
+worldMap = cshp(date=as.Date('2016-1-1'))
+```
+
+We start by using the `cshp` function from the `cshapes` package and provide as an input a date indicating what year we want a map from, and you **MUST** pass this date to the function as a date object. 
+
+Lets now explore characteristics of the object returned by the `cshp` function: 
+
+```{r}
+#spatial polygon
+class(worldMap) 
+
+slotNames(worldMap)
+
+worldMap@polygons
+
+head(worldMap@data)
+```
+
+`worldMap` is known as a `S4` object (deeper reading:http://adv-r.had.co.nz/S4.html), to see the elements contained in this kind of object we use the `slotNames` function. And to access any of the elements inside the object we use `@`, for example, above we display a dataframe within this object by writing: `worldMap@data`. It can take a while to get used to this layout, so play around with this on your own time.
+
+Next since our goal here is to plot data for Nigeria, we throw away all data not involving Nigeria via subsetting using square brackets `[]`so we can 'index' into the data.
+
+
+```{r}
+cntryShape = worldMap[worldMap$CNTRY_NAME == 'Nigeria', ]
+```
+
+Next, in order to take the information in this `S4` object and visualize it via `ggplot` we need to convert it into a dataframe via the `tidy` function from the `tidyverse` package.
+
+An important step when it comes to passing our spatial polygon dataframe to tidy is choosing a variable from the underlying data slot of `cntryShape` that differentiates the polygons we want to visualize. In this case, there is only one polygon we want to draw so this doesn't matter as much if we were plotting multiples, but we still need to do it. We'll pick the `COWCODE` variable from the dataframe underlying `cntryShape`.
+
+- COWCODEs are just a numeric ordering system for country names
+
+```{r}
+nigeriaShape = tidy(cntryShape, region="CNTRY_NAME")
+
+head(nigeriaShape)
+```
+
+Now we plot. This should seem similar to what we have done before with the addition of one new aesthetic called `map_id`. 
+
+In order to match the information between the conflictual events and polygon dataframes we need to add an `id` variable to `nData`. The `id` variable needs to match the `id` variable that shows up in `nigeriaShape`, which in this case is just "Nigeria". 
+
+```{r}
+# add id variable to nData
+nData$id = 'Nigeria'
+
+# plot
+ggplot(
+  data=nData, 
+  aes(map_id = id, x=LONGITUDE, y=LATITUDE)) +
+  geom_map(map=nigeriaShape, 
+    fill='transparent', linetype=1, color='grey30') +
+  geom_point()
+```
+
+Now lets just put everything together in one chunk of code: 
+
+```{r, eval=FALSE}
+# get world map from the chsp function
+worldMap = cshp(date=as.Date('2016-1-1'))
+
+# subset world map by just the nigeria polygon
+# make sure to take a look at the @data slot in the
+# s4 object when choosing a variable to subset by
+cntryShape = worldMap[worldMap$CNTRY_NAME=='Nigeria',]
+
+# tidy up into a dataframe via the tidy function in
+# the tidyverse package
+nigeriaShape = tidy(cntryShape, region='CNTRY_NAME')
+
+#add corresponding id variable to nData
+nData$id = 'Nigeria'
+
+# plot
+ggplot(data=nData, 
+    aes(map_id=id, x=LONGITUDE, y=LATITUDE)) +
+    geom_map(map=nigeriaShape, 
+           fill='transparent', linetype=1, color='grey30') +
+  geom_point()
+```
+
+In this second section, we have relied entirely on ggplot fundamentals to plot a polgyon, which we get from our shape file, and points, which we get from our data.
+
+Recall: Raster and vector are two very different but common data formats used to store geospatial data.
+
+- Vector data use X and Y coordinates to define the locations of points, lines, and areas (polygons) that correspond to map features such as fire hydrants, trails, and parcels. As such, vector data tend to define centers and edges of features.
+- Raster data, on the other hand, use a matrix of square areas to define where features are located. These squares, also called pixels, cells, tiles, and grids, typically are of uniform size, and their size determines the detail that can be maintained in the dataset. Because raster data represent square areas, they often describe interiors rather than boundaries as is the case with vector data.
+- Vector data are excellent for capturing and storing spatial details, while raster data are well suited for capturing, storing, and analyzing data such as elevation, temperature, soil pH, etc. that vary continuously from location to location. Raster data formats also are used to store aerial and satellite imagery.
+
+## Combining raster and polygons
+
+We can bring in the benefits of each by combining them in one plot using the `inset_ggmap` function.  
+
+```{r}
+# plot with polygons and raster!
+ggplot(
+  data=nData, 
+  aes(map_id=id, x=LONGITUDE, y=LATITUDE)) +
+  inset_ggmap(ngaLines) +
+  geom_map(map=nigeriaShape, fill='transparent', linetype=1, color='grey20', size=1) +
+  geom_point()
+```
+
+
+##  Visualizing conflict hotzones
+
+Last step! How do we visualize the hot zones? We're going to use the `stat_density2d` function. This provides us with a 2D version of geom_density()!
+
+```{r}
+nigeriaP = 
+  ggplot(
+  data=nData, 
+  aes(map_id=id, x=LONGITUDE, y=LATITUDE)) +
+  inset_ggmap(ngaLines) +
+  geom_map(map=nigeriaShape, 
+           fill='transparent', linetype=1, color='grey40', size=1) +
+  geom_point() +
+  stat_density2d(aes(fill=..level..), alpha=.2, geom='polygon', show.legend = FALSE)
+nigeriaP
+```
+
+Note: the stat functions compute new values and create new data frames. this one creates a data frame with a level variable. You can see it if you use `ggplot_build`.
+
+`stat_density2d(...)` uses `kde2d(...)` in the `MASS` package to calculate the 2-dimensional kernal density estimate, based on bivariate normal distributions. The density at a point is scaled so that the integral of density over all x and y = 1. So if you data is highly localized, or if the range for x and y is small, you can get large numbers for density. Usually, these numbers are not critical to interpret, since the visual is rather intuitive to interpret. Yet! There might be a case where you do really want to spend time talking about this. I recommend this particular discussion on stack overflow:
+https://stackoverflow.com/questions/53172200/stat-density2d-what-does-the-legend-mean
+
+In sum, this graphic is nice! I may have told some of you in the past that if you use color that goes from dark to light to show intensity, most of the time this is confusing, since higher saturation intuitively tends to represent higher, not lower values. But inn the case of this plot, the 'brighter' color works better for 'intensity.'
+
+## Some additional practice
+
+Below, I provide some code for you to work through. Here are our steps:
+1. This code first lets focus in one type of event, those events related to the Boko Haram and remove NAs.
+2. We then append this new vector to our `nData` object. 
+3. Next, we use this to color points related (and not related) to events including the Boko Haram. 
+4. Last, we can facet this by year! 
+
+```{r}
+
+```
+
+
+## References
+- good tutorial with crime data (most common example) https://cfss.uchicago.edu/notes/raster-maps-with-ggmap/
+- https://journal.r-project.org/archive/2013-1/kahle-wickham.pdf
+- https://ropensci.github.io/plotly/ggplot2/geom_map.html
+- https://ggplot2-book.org/maps.html
+- https://carto.com/blog/eighty-data-visualizations-examples-using-location-data-maps/#environmental
