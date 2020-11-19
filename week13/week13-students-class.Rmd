@@ -1,0 +1,348 @@
+---
+title: "Week 13: K-means Clustering"
+author: "Dr. Cassy Dorff"
+date: "11/17/2020"
+output:
+  html_document:
+    keep_md: true
+urlcolor: blue
+subtitle: DSI-Explore
+editor_options: 
+  chunk_output_type: console
+---
+
+# Introduction
+
+K-means clustering takes your unlabeled data and a constant, `k`, and returns `k` number of clusters that are within a specified distance of each other. It automatically groups together things that look alike so you don't have to!
+
+Let's begin with the `USArrests` data. This is a very over-used example, but it is useful. We will start here and then turn to other data.
+
+This data set contains statistics, in arrests per 100,000 residents for assault, murder, and rape in each of the 50 US states in 1973. It also has the percentage of population living in urban areas in each state.
+
+```{r}
+library(janitor)
+library(stats)
+library(tidyverse)
+#install.packages("factoextra")
+library(factoextra)
+
+data("USArrests")     
+head(USArrests, n = 3)
+```
+
+Variables are often scaled (i.e. standardized) before measuring the inter-observation dissimilarities. Scaling is recommended when variables are measured in different scales (e.g: kilograms, kilometers, centimeters, etc).
+
+Should I scale? Ask yourself: do I have two features, one where the differences between cases is large and the other small? Am I willing to have the former as almost the only driver of distance? If the first answer is yes and the second answer is no, you will likely need to scale your data. 
+
+See more on scaling and k-means, [here!](https://pdfs.semanticscholar.org/1d35/2dd5f030589ecfe8910ab1cc0dd320bf600d.pdf)
+
+```{r}
+# we see all values are numeric
+# scale the data set
+df <- scale(USArrests) 
+
+# for now...
+df <- na.omit(df)
+```
+
+Can you tell what actions the `scale()` function performed with default inputs? `scale` calculates the mean and standard deviation of each column vector, then subtracts the mean and divides by the standard deviation for each observation. It's especially useful when your dataset contains variables with widely varying scales (as highlighted above).
+
+Within R it is simple to compute and visualize the distance matrix using the functions `get_dist` and `fviz_dist` from the `factoextra` R package. Though, you can certainly build your own plot from scratch to do this!
+
+- `get_dist`: for computing a distance matrix between the rows of a data matrix. The default distance computed is the Euclidean; however,
+- `get_dist` also supports other distance measures
+- `fviz_dist`: for visualizing a distance matrix
+
+```{r}
+distance <- get_dist(df)
+fviz_dist(distance, gradient = list(low = "#00AFBB", mid = "white", high = "#FC4E07"))
+```
+
+*Questions*
+
+- What does the function `get_dist()` do? What arguments does it take? What is its default measure?
+  + hint: check out [this link for a refresher on measuring distance](https://www.displayr.com/what-is-a-distance-matrix/).
+  + Answer: default is euclidean distance, it's key argument is that it takes a data.frame. The function creates a distance matrix. A distance matrix quite literally computes the distance between points using the variables available. 
+
+- Why is it useful to visualize the distance matrix? 
+  + Note, there are different ways you can measure distance. We are using the classical euclidean measurement. [More here! Don't forget, as you get farther along using clustering, distance choice is more important](https://www.datanovia.com/en/lessons/clustering-distance-measures/#methods-for-measuring-distances)
+  + Answer: The graph above helps us begin to illustrate which states have large dissimilarities (red) versus those that appear to be fairly similar (teal).The ordered dissimilarity matrix image (ODI) displays the clustering tendency of the dataset. 
+
+# Running the algorithm 
+
+Below we will first set the seed before running the algorithm. Then, take note of the arguments for kmeans. 
+
+- What are the arguments for the `kmeans()` function?
+- Why is it important to set the seed? (Hint: imagine you are sharing your Rmd with a classmate!)
+
+We will use `kmeans() `on our `df` object and specify k as equal to 2. We can also change `nstart` to something like 25, if we wanted, since k-means is sensitive to its random starting positions. This means that R will try 25 different random starting assignments and then select the best results corresponding to the one with the lowest within-cluster variation. 
+
+```{r}
+# compute k-means with k=2
+set.seed(1234)
+k2 <- kmeans(df, centers = 2, nstart = 25)
+
+# Print the results
+print(k2)
+```
+
+The primary printed output tells us our analysis resulted in two groups with cluster sizes of 30 and 20. Plus it gives us a matrix of cluster means, where the rows are the cluster number (in this case 1 to 2) and the columns are the variables in the data.
+
+The output also gives us a clustering vector to tell us the data point that is assigned to each cluster.
+
+The *"within cluster sum of squares by cluster"* output is useful here to use as a rough measure of goodness of fit for k-means. SS stands for Sum of Squares, and ideally you want a clustering that has the properties of internal cohesion and external separation, so here the between sum of squares/ total sum of squares ratio should approach 1 if the model fits well. In other words, in this case we can interpret `47.5%` as the amount of variance explained by our analysis (so we might want to try more than 2 clusters, but remember you want them to remain 'interpretable!'). Recall: sum of squares = the squared distance of each point from its centroid summed over all points.
+
+We can also view our results by using `fviz_cluster.` This provides a nice illustration of the clusters. If there are more than two dimensions (variables) `fviz_cluster` will perform principal component analysis (PCA) and plot the data points according to the first two principal components that explain the majority of the variance. Why is this needed? Because visualizing anything above 3D (but often even 2D) is very hard! And usually it is also difficult to interpret for human beings. 
+
+```{r}
+fviz_cluster(k2, data = df)
+```
+
+## Discussion
+
+Stop and discuss: What might be driving these clusters, or the classes produced by the algorithm? Brainstorm ideas. 
+
+Wonderfully, you can also just use pairwise scatter plots to illustrate the clusters compared to the original variables which can aid in interpretation. 
+
+Below, on your own:
+
+1. Take our data, create a 'cluster' feature in the data, then plot two variables from the original data in a scatterplot and color these points by their cluster indicator
+
+*Practice*
+```{r}
+df %>% 
+  as_tibble() %>%
+  mutate(cluster = k2$cluster, 
+         state=row.names(USArrests)) %>%
+  ggplot(aes(UrbanPop, Murder, color = factor(cluster), label = state)) + 
+  geom_text()
+
+```
+
+2. Because the number of clusters (k) must be set before we start the algorithm, it is often advantageous to use several different values of k and examine the differences in the results. We can execute the same process for 3, 4, and 5 clusters, and the plot the results in one figure:
+
+```{r}
+k3 = kmeans(df, centers=3, nstart=25)
+k4 = kmeans(df, centers=4, nstart=25)
+k5 = kmeans(df, centers=5, nstart=25)
+
+p2 = fviz_cluster(k2, geom = "point", data = df) + ggtitle("k = 2")
+p3 = fviz_cluster(k3, geom = "point", data = df) + ggtitle("k = 3")
+p4 = fviz_cluster(k4, geom = "point", data = df) + ggtitle("k = 4")
+p5 = fviz_cluster(k5, geom = "point", data = df) + ggtitle("k = 5")
+
+library(patchwork)
+p2+p3+p4+p5
+```
+
+We could also look at the output for each of these to assess how well the clusters are mapping onto the data. 
+
+# Determining Optimal Clusters
+
+While the basic introduction to the methods above will help you explore your data in preliminary way, there are three common methods for determining the number of clusters to use in the analysis (k).
+
+- Elbow method
+- Silhouette method
+- Gap statistic
+
+Recall that in general, our goal is to (a) define clusters such that the total intra-cluster variation (known as total within-cluster variation) is minimized and (b) be able to interpret our results. We will focus only on the Elbow method here, though you may explore the others on your own time.
+
+Fortunately, the process to compute the “Elbow method” has been wrapped up in a single function (`fviz_nbclust`) which you saw when we learned PCA.  The plot below will plot the `within cluster sum of squares` on the Y axis (recall this output is easily readible above from our first run of the algorithm) and the number of clusters `n` the X axis. 
+
+The 'elbow point' is where the within cluster sum of squares (WCSS) doesn't decrease significantly with every iteration (or addition of a cluster). We can generally interpret this number to be an ideal cluster point (as moderated by your interpretation of the data as well).
+
+Together, let us examine and elbow plot for k-means analysis of this data:
+
+```{r}
+fviz_nbclust(df, kmeans, method = "wss")
+```
+
+*Discuss*
+
+What is the optimal number of clusters? 
+
+Write the code above to re-run the algorithm with 4 clusters and plot the results by looking at the visualization for clusters (nothing new here, but just to come full circle)!
+
+```{r}
+final <- kmeans(df, centers = 4, nstart = 25)
+finalplot <- fviz_cluster(final, data = df) + ggtitle("k = 4")
+finalplot
+```
+
+In future analysis, you can actually begin with the elbow plot. Then you an narrow it down to a few options (maybe 3,4,5) if you are not confident. Next you can visually inspect the clusters, but do not forget to also check to see how much variance is explained by the clusters.
+
+
+## Covid Data! 
+
+Let's now turn to data you cannot find a tutorial on! We have gone an entire semester and managed to not make everything about COVID, but finally we've arrived. A big thank you to your TA Yasi, for helping with this section! I originally found horse racing data, and for those of you interested, check this out : http://horseracingdatasets.com/payouts/
+
+Select 8 variables that the article mentioned.
+
+```{r, load the data}
+# covid data!
+df_covid <- read_csv("covid.csv")
+
+df_covid <- df_covid %>% 
+  clean_names() %>% 
+  column_to_rownames("country")
+
+df_new <- df_covid %>% 
+  select('p_db', "p_copd", "p_hiv", "p_tbc", "gdp_2017", "pop_men", "pm2_5", "uhc_index_2017")
+
+df_new <- scale(df_new)
+summary(df_new)
+```
+
+Read a bit about the variables:
+
+- `p_db`: covid prevalence 
+- `p_copd`: disease [COPD] 
+- `p_hiv`: disease HIV/AIDS 
+- `p_tbc`: tuberculosis 
+- `gdp_2017`: Gross domestic product 
+- `per capita pop_men`: Proportion of males in the country 
+- `pm_2.5`: Concentration of 2.5 particulate matter by country (Air quality metric) 
+- `uhc_index_2017`: Universal health coverage index of service coverage
+
+This data was found from this article : https://www.ncbi.nlm.nih.gov/pmc/articles/PMC7308996/
+
+Summary of article approach: Unsupervised machine learning algorithms (k-means) were used to define data-driven clusters of countries; the algorithm was informed by disease prevalence estimates, metrics of air pollution, socio-economic status and health system coverage. Using the one-way ANOVA test, we compared the clusters in terms of number of confirmed COVID-19 cases, number of deaths, case fatality rate and order in which the country reported the first case.
+
+Covid data summary: "number of confirmed deaths (as of 23/03/2020); case fatality rate per 1,000 cases (as of 23/03/2020)." 
+
+# On your own
+
+Can you first determine the optimal number of clusters using k-means and our scaled dataset? 
+
+Then can you examine the clusters visually? Do these seem to make sense? Read the documentation for the `fviz_cluster` and see if you can improve the plot. 
+
+```{r, cluster analysis}
+# covid data!
+df_covid <- read_csv("covid.csv")
+
+df_covid <- df_covid %>% 
+  clean_names() %>% 
+  column_to_rownames("country")
+
+df_new <- df_covid %>% 
+  select('p_db', "p_copd", "p_hiv", "p_tbc", "gdp_2017", "pop_men", "pm2_5", "uhc_index_2017")
+
+df_new <- scale(df_new)
+summary(df_new)
+
+fviz_nbclust(df_new, kmeans, method = "wss") +
+    geom_vline(xintercept = 4, linetype = 2)+
+    labs(subtitle = "Elbow method")
+
+covid_k <- kmeans(df_new, centers = 4, nstart = 50)
+fviz_cluster(covid_k, data = df_new, ggtheme= theme_minimal()) 
+```
+
+## Tutorial
+
+Combining PCA and Clustering, a take-home example for visualization. Read through this tutorial below either on your own or in class with your team (if time). Add notes of your own and comments of your own. 
+
+```{r, pca analysis}
+# PCA and cree plots
+res.pca <- prcomp(df_new, scale = TRUE)
+fviz_eig(res.pca)
+summary(res.pca)
+
+#When PC = 5, almost 85% of the variance of the input could be explained. However, for the teaching purposes, we chose the first 3 PCs, which explained 62% of the variance.
+
+#Graph of variables
+fviz_pca_var(res.pca,
+             col.var = "contrib", # Color by contributions to the PC
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
+             repel = TRUE     # Avoid text overlapping
+             )
+```
+Interpretation notes:
+
+- Positively correlated variables are grouped together.
+- Negatively correlated variables are positioned on opposite sides of the plot origin (opposed quadrants).
+- The distance between variables and the origin measures the quality of the variables on the factor map. Variables that are away from the origin are well represented on the factor map
+
+```{r, pca analysis}
+#Biplot of individuals and variables
+fviz_pca_biplot(res.pca, repel = TRUE,
+                col.var = "#2E9FDF", # Variables color
+                col.ind = "#696969"  # Individuals color
+                )
+```
+
+Now let's check out the quality of the representation.
+
+- The closer a variable is to the circle of correlations, the better its representation on the factor map (and the more important it is to interpret these components)
+- Variables that are closed to the center of the plot are less important for the first components
+
+```{r}
+library("corrplot")
+var <- get_pca_var(res.pca)
+corrplot(var$cos2[,1:3], is.corr=FALSE)
+
+# Visualizations of the contribution of the variables.
+fviz_contrib(res.pca, choice = "var", axes = 1, top = 10)
+fviz_contrib(res.pca, choice = "var", axes = 2, top = 10)
+fviz_contrib(res.pca, choice = "var", axes = 3, top = 10)
+
+# Put the variance that explained into the dataset
+var_explained <- res.pca$sdev^2/sum(res.pca$sdev^2)
+var_explained
+
+# Use the reduced information to do k-means clustering
+# Inspect principal components
+comp <- data.frame(res.pca$x[,1:3])
+
+# Plot
+plot(comp, pch=16, col=rgb(0,0,0,0.5))
+
+# WWS with the number of clusters. It seemed that there were no clear elbow.
+fviz_nbclust(comp, kmeans, method = "wss") +
+    geom_vline(xintercept = 4, linetype = 2)+
+  labs(subtitle = "Elbow method")
+
+# Pick the number of clusters
+clusters3 <- kmeans(comp, centers = 3, nstart = 25)
+clusters4 <- kmeans(comp, centers = 4, nstart = 25)
+clusters5 <- kmeans(comp, centers = 5, nstart = 25)
+
+comp$clusters3 <- as.factor(clusters3$cluster)
+comp$clusters4 <- as.factor(clusters4$cluster)
+comp$clusters5 <- as.factor(clusters5$cluster)
+
+# Visualizations
+comp %>% 
+  as.data.frame %>%
+  rownames_to_column("country") %>%
+  ggplot(aes(x=PC1,y=PC2)) + geom_point(aes(color=clusters3)) +
+  theme_bw() + 
+  labs(x=paste0("PC1: ",round(var_explained[1]*100,1),"%"),
+       y=paste0("PC2: ",round(var_explained[2]*100,1),"%")) +
+  theme(legend.position="top")
+
+comp %>% 
+  as.data.frame %>%
+  rownames_to_column("country") %>%
+  ggplot(aes(x=PC1,y=PC2, label=country)) +
+  geom_label(aes(colour = clusters4), fontface = "bold")+
+  labs(x=paste0("PC1: ",round(var_explained[1]*100,1),"%"),
+       y=paste0("PC2: ",round(var_explained[2]*100,1),"%"))+
+  theme(legend.position="top")
+
+comp %>% 
+  filter(clusters4 == 1)
+comp %>% 
+  filter(clusters4 == 2)
+comp %>% 
+  filter(clusters4 == 3)
+
+fviz_cluster(clusters4, data = df_new,
+             palette = c("#2E9FDF", "#00AFBB", "#E7B800", "#FC4E07"),
+             ellipse.type = "euclid",
+             # star.plot = TRUE, 
+             ggtheme = theme_minimal())
+```
+
+
+
