@@ -1,0 +1,101 @@
+---
+title: "Final Class Day: Data Quickfire!"
+author: "Dr. Cassy Dorff"
+date: "12/3/2020"
+output:
+  html_document:
+    keep_md: true
+urlcolor: blue
+subtitle: DSI-Explore
+editor_options: 
+  chunk_output_type: console
+---
+
+Today you will compete in a DATA QUICKFIRE! What is at stake?
+
+The winner:
+ - One fashionable data science institute sweatshirt
+ - One bonus point added to your final project's score
+ 
+The runner up: 
+  - Glory!FAME!
+  - One bonus point added ot your final project's score
+
+The goal: Create a *very* mis-leading graphic. Include a couple of sentences as to why it is misleading. 
+
+Data options:
+
+- covdata package (see below)
+- john hopkins data (see below)
+- covid.csv (from week 13)
+
+## Covdata package
+
+```{r}
+# recommended
+library(janitor)
+library(stats)
+library(tidyverse)
+
+# data you need
+install.packages("covdata")
+library(covdata)
+```
+
+Where I found out about this data: https://github.com/mine-cetinkaya-rundel/covid19-r
+
+How I installed it: 
+- devtools::install_github("https://github.com/kjhealy/covdata", quiet=TRUE)
+- documentation: https://github.com/kjhealy/covdata
+- vignettes from package creator: https://github.com/kjhealy/covdata/tree/main/vignettes
+
+Some example code below from the package maintaner:
+
+```{r}
+# data sets
+head(covnat)
+head(apple_mobility)
+head(covus)
+
+# Example from package maintainer
+nytcovcounty %>%
+  mutate(uniq_name = paste(county, state)) %>% # Can't use FIPS because of how the NYT bundled cities
+  group_by(uniq_name) %>%
+  mutate(days_elapsed = date - min(date)) %>%
+  ggplot(aes(x = days_elapsed, y = cases, group = uniq_name)) + 
+  geom_line(size = 0.25, color = "gray20") + 
+  scale_y_log10(labels = scales::label_number_si()) + 
+  guides(color = FALSE) + 
+  facet_wrap(~ state, ncol = 5) + 
+  labs(title = "COVID-19 Cumulative Recorded Cases by US County",
+       subtitle = paste("New York is bundled into a single area in this data.\nData as of", format(max(nytcovcounty$date), "%A, %B %e, %Y")),
+       x = "Days since first case", y = "Count of Cases (log 10 scale)", 
+       caption = "Data: The New York Times | Graph: @kjhealy") + 
+  theme_minimal()
+```
+
+## Johns Hopkins Data
+
+The data is on github: https://github.com/CSSEGISandData/COVID-19
+
+I have pulled data for you for the US below. You will need to do a bit of cleaning before working with it. There is actually example code of this on their github, I don't care if you use it, but if it slows you down, consider using a different data option.
+
+```{r}
+# IMPORT RAW DATA: Johns Hopkins Github data
+
+jh_data <- read.csv("https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_confirmed_US.csv")
+
+# DATA CLEANING: To create country level and global combined data
+# you would need to convert each data set from wide to long AND aggregate at country level
+```
+
+## Homework covid data
+
+You may also choose to use the hw data from our clustering hw. Up to you!
+
+## When done:
+
+Submit on google drive
+https://docs.google.com/document/d/10AethATm99UQpdNF1gC4aSKtQiGjkPhDDwU20UD8IoY/edit?usp=sharing
+
+
